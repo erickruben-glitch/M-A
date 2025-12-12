@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Temperatura ESP32</title>
+    <title>Control de Temperatura ESP32 BLE</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -33,12 +33,40 @@
         }
 
         /* --- Secciones Generales --- */
-        .seccion-control, .seccion-sensores, .seccion-actuadores {
+        .seccion-control, .seccion-sensores, .seccion-actuadores, .seccion-conexion {
             margin-bottom: 25px;
             padding: 15px;
             border: 1px solid #ddd;
             border-radius: 8px;
         }
+        
+        /* Estilo para la nueva sección de conexión */
+        .seccion-conexion {
+            text-align: center;
+            background-color: #e6f7ff;
+            border-color: #91d5ff;
+        }
+
+        #btn-conectar {
+            padding: 12px 25px;
+            font-size: 1.1em;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        #btn-conectar:hover {
+            background-color: #0056b3;
+        }
+        
+        .estado-conexion {
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
 
         h2 {
             color: #28a745;
@@ -50,7 +78,7 @@
         /* --- Sensores y Termómetros --- */
         .grid-sensores {
             display: grid;
-            grid-template-columns: repeat(5, 1fr); /* 4 sensores + Promedio */
+            grid-template-columns: repeat(5, 1fr); 
             gap: 20px;
             text-align: center;
         }
@@ -85,7 +113,7 @@
 
         .termometro-nivel {
             width: 100%;
-            background-color: #dc3545; /* Rojo para calor */
+            background-color: #dc3545; 
             position: absolute;
             bottom: 0;
             transition: height 0.5s ease-in-out;
@@ -96,7 +124,7 @@
         }
 
         .promedio-display .termometro-nivel {
-             background-color: #007bff; /* Azul para promedio */
+             background-color: #007bff; 
         }
 
         /* --- Control (Manual/Automático) --- */
@@ -120,7 +148,7 @@
         #btn-manual { background-color: #ffc107; color: #333; }
 
         .modo-activo {
-            box-shadow: 0 0 10px 3px rgba(40, 167, 69, 0.5); /* Sombra verde si es activo */
+            box-shadow: 0 0 10px 3px rgba(40, 167, 69, 0.5); 
             border: 3px solid #1e7e34;
             font-weight: bold;
         }
@@ -164,7 +192,7 @@
         #btn-calef-on { background-color: #ff6347; color: white; }
         #btn-calef-off { background-color: #6c757d; color: white; }
 
-        /* Deshabilitar botones en modo automático */
+        /* Deshabilitar botones en modo automático y desconectado */
         .actuador-card.disabled button {
             opacity: 0.5;
             cursor: not-allowed;
@@ -173,7 +201,14 @@
 </head>
 <body>
     <div class="container">
-        <h1>Sistema de Control de Temperatura ESP32</h1>
+        <h1>Sistema de Control de Temperatura ESP32 BLE</h1>
+        
+        <div class="seccion-conexion">
+            <h2>🔗 Conexión ESP32</h2>
+            <button id="btn-conectar" onclick="conectarBluetooth()">Conectar ESP32 (Bluetooth)</button>
+            <p class="estado-conexion">Estado: <span id="estado-ble" style="color: red;">Desconectado</span></p>
+            <p style="font-size: 0.8em; color: #666;">*Esta función requiere navegadores compatibles con Web Bluetooth (Ej: Chrome).</p>
+        </div>
 
         <div class="seccion-control">
             <h2>⚙️ Modo de Operación</h2>
@@ -195,6 +230,52 @@
                 </div>
                 <div class="sensor-display">
                     <h3>Sensor 2</h3>
+                    <div class="sensor-valor" id="temp-s2">--</div>
+                    <div class="termometro" id="term-s2"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+                <div class="sensor-display">
+                    <h3>Sensor 3</h3>
+                    <div class="sensor-valor" id="temp-s3">--</div>
+                    <div class="termometro" id="term-s3"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+                <div class="sensor-display">
+                    <h3>Sensor 4</h3>
+                    <div class="sensor-valor" id="temp-s4">--</div>
+                    <div class="termometro" id="term-s4"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+                 <div class="sensor-display promedio-display">
+                    <h3>Promedio Gral.</h3>
+                    <div class="sensor-valor" id="temp-promedio">--</div>
+                    <div class="termometro" id="term-promedio"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="seccion-actuadores">
+            <h2>💡 Control de Actuadores (Manual)</h2>
+            <div class="actuadores-grid">
+                <div class="actuador-card disabled" id="card-ventilador">
+                    <h3>Ventilador</h3>
+                    <div class="actuador-estado act-off" id="estado-ventilador">APAGADO</div>
+                    <button id="btn-vent-on" onclick="setActuador('ventilador', true)">ENCENDER</button>
+                    <button id="btn-vent-off" onclick="setActuador('ventilador', false)">APAGAR</button>
+                </div>
+
+                <div class="actuador-card disabled" id="card-calefaccion">
+                    <h3>Calefacción</h3>
+                    <div class="actuador-estado act-off" id="estado-calefaccion">APAGADA</div>
+                    <button id="btn-calef-on" onclick="setActuador('calefaccion', true)">ENCENDER</button>
+                    <button id="btn-calef-off" onclick="setActuador('calefaccion', false)">APAGAR</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    <h3>Sensor 2</h3>
                     <div class="sensor-valor" id="temp-s2">--</div>
                     <div class="termometro" id="term-s2"><div class="termometro-nivel"></div></div>
                     <p>°C</p>
