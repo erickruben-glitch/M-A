@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Temperatura ESP32</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 1000px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #007bff;
+            margin-bottom: 30px;
+        }
+
+        /* --- Secciones Generales --- */
+        .seccion-control, .seccion-sensores, .seccion-actuadores {
+            margin-bottom: 25px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        h2 {
+            color: #28a745;
+            border-bottom: 2px solid #28a745;
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+        }
+
+        /* --- Sensores y Termómetros --- */
+        .grid-sensores {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr); /* 4 sensores + Promedio */
+            gap: 20px;
+            text-align: center;
+        }
+
+        .sensor-display {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .sensor-valor {
+            font-size: 2em;
+            font-weight: bold;
+            color: #dc3545;
+            margin-bottom: 10px;
+        }
+
+        /* Termómetro Gráfico (CSS) */
+        .termometro {
+            width: 30px;
+            height: 120px;
+            background-color: #ccc;
+            border: 1px solid #999;
+            border-radius: 15px;
+            margin: 10px 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .termometro-nivel {
+            width: 100%;
+            background-color: #dc3545; /* Rojo para calor */
+            position: absolute;
+            bottom: 0;
+            transition: height 0.5s ease-in-out;
+        }
+        
+        .promedio-display .sensor-valor {
+             color: #007bff;
+        }
+
+        .promedio-display .termometro-nivel {
+             background-color: #007bff; /* Azul para promedio */
+        }
+
+        /* --- Control (Manual/Automático) --- */
+        .modo-control {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+        }
+
+        .modo-control button {
+            padding: 10px 20px;
+            font-size: 1em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #btn-auto { background-color: #28a745; color: white; }
+        #btn-manual { background-color: #ffc107; color: #333; }
+
+        .modo-activo {
+            box-shadow: 0 0 10px 3px rgba(40, 167, 69, 0.5); /* Sombra verde si es activo */
+            border: 3px solid #1e7e34;
+            font-weight: bold;
+        }
+
+        /* --- Actuadores (Ventilador/Calefacción) --- */
+        .actuadores-grid {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+        }
+
+        .actuador-card {
+            padding: 20px;
+            border: 2px solid #007bff;
+            border-radius: 10px;
+            width: 45%;
+        }
+
+        .actuador-estado {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 10px 0;
+            color: #dc3545;
+        }
+
+        .actuador-on { color: #28a745 !important; }
+        .actuador-off { color: #dc3545 !important; }
+
+        .actuador-card button {
+            padding: 8px 15px;
+            font-size: 0.9em;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100px;
+        }
+
+        #btn-vent-on { background-color: #17a2b8; color: white; }
+        #btn-vent-off { background-color: #6c757d; color: white; }
+        #btn-calef-on { background-color: #ff6347; color: white; }
+        #btn-calef-off { background-color: #6c757d; color: white; }
+
+        /* Deshabilitar botones en modo automático */
+        .actuador-card.disabled button {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sistema de Control de Temperatura ESP32</h1>
+
+        <div class="seccion-control">
+            <h2>⚙️ Modo de Operación</h2>
+            <div class="modo-control">
+                <button id="btn-auto" onclick="setModo('auto')" class="modo-activo">Automático</button>
+                <button id="btn-manual" onclick="promptPassword()">Manual</button>
+            </div>
+            <p style="text-align: center; margin-top: 15px;">**Modo Actual:** <span id="modo-actual" style="font-weight: bold; color: #007bff;">Automático</span></p>
+        </div>
+
+        <div class="seccion-sensores">
+            <h2>🌡️ Lecturas de Sensores Dallas</h2>
+            <div class="grid-sensores">
+                <div class="sensor-display">
+                    <h3>Sensor 1</h3>
+                    <div class="sensor-valor" id="temp-s1">--</div>
+                    <div class="termometro" id="term-s1"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+                <div class="sensor-display">
+                    <h3>Sensor 2</h3>
+                    <div class="sensor-valor" id="temp-s2">--</div>
+                    <div class="termometro" id="term-s2"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+                <div class="sensor-display">
+                    <h3>Sensor 3</h3>
+                    <div class="sensor-valor" id="temp-s3">--</div>
+                    <div class="termometro" id="term-s3"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+                <div class="sensor-display">
+                    <h3>Sensor 4</h3>
+                    <div class="sensor-valor" id="temp-s4">--</div>
+                    <div class="termometro" id="term-s4"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+                 <div class="sensor-display promedio-display">
+                    <h3>Promedio Gral.</h3>
+                    <div class="sensor-valor" id="temp-promedio">--</div>
+                    <div class="termometro" id="term-promedio"><div class="termometro-nivel"></div></div>
+                    <p>°C</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="seccion-actuadores">
+            <h2>💡 Control de Actuadores (Manual)</h2>
+            <div class="actuadores-grid">
+                <div class="actuador-card" id="card-ventilador">
+                    <h3>Ventilador</h3>
+                    <div class="actuador-estado act-off" id="estado-ventilador">APAGADO</div>
+                    <button id="btn-vent-on" onclick="setActuador('ventilador', true)">ENCENDER</button>
+                    <button id="btn-vent-off" onclick="setActuador('ventilador', false)">APAGAR</button>
+                </div>
+
+                <div class="actuador-card" id="card-calefaccion">
+                    <h3>Calefacción</h3>
+                    <div class="actuador-estado act-off" id="estado-calefaccion">APAGADA</div>
+                    <button id="btn-calef-on" onclick="setActuador('calefaccion', true)">ENCENDER</button>
+                    <button id="btn-calef-off" onclick="setActuador('calefaccion', false)">APAGAR</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    ```
+
+### 2. Lógica JavaScript (Dentro del mismo archivo)
+
+El siguiente código JavaScript debe ir **justo antes de la etiqueta `</body>`** en el archivo `control_temperatura.html`.
+
+```javascript
+<script>
+        const PASSWORD = "1234";
+        let modo = 'auto'; // 'auto' o 'manual'
+        let temperaturas = [23.5, 23.8, 24.1, 23.2]; // Datos simulados iniciales
+        let actuadores = {
+            ventilador: false, // false = apagado, true = encendido
+            calefaccion: false
+        };
+
+        // Rango de temperatura para mapeo del termómetro (de 0% a 100%)
+        const TEMP_MIN = 15;
+        const TEMP_MAX = 40;
+
+        /**
+         * Función para actualizar la interfaz con las temperaturas
+         */
+        function actualizarInterfazTemperaturas() {
+            let suma = 0;
+            const sensores = ['s1', 's2', 's3', 's4'];
+            
+            // 1. Actualizar sensores individuales
+            temperaturas.forEach((temp, index) => {
+                const id = sensores[index];
+                document.getElementById(`temp-${id}`).textContent = temp.toFixed(1) + '°C';
+                
+                // Mapear la temperatura a un porcentaje de altura (0% a 100%)
+                let nivel = ((temp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * 100;
+                nivel = Math.max(0, Math.min(100, nivel)); // Asegura que esté entre 0 y 100
+                
+                document.getElementById(`term-${id}`).querySelector('.termometro-nivel').style.height = nivel + '%';
+                suma += temp;
+            });
+
+            // 2. Calcular y actualizar el promedio
+            const promedio = suma / temperaturas.length;
+            document.getElementById('temp-promedio').textContent = promedio.toFixed(1) + '°C';
+            
+            // Mapear el promedio al termómetro principal
+            let nivelPromedio = ((promedio - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * 100;
+            nivelPromedio = Math.max(0, Math.min(100, nivelPromedio));
+            document.getElementById('term-promedio').querySelector('.termometro-nivel').style.height = nivelPromedio + '%';
+            
+            return promedio;
+        }
+        
+        /**
+         * Lógica de Control Automático (Se ejecuta cada vez que hay un nuevo promedio)
+         */
+        function controlAutomatico(promedio) {
+            let vent_on = false;
+            let calef_on = false;
+            
+            // Ventilador: se prende cuando la temperatura pase los 35°C
+            if (promedio > 35) {
+                vent_on = true;
+                calef_on = false; // La calefacción debe permanecer apagada
+            } 
+            // Calefacción: se prende cuando la temperatura llegue de 20 a 25 °C
+            else if (promedio >= 20 && promedio <= 25) {
+                calef_on = true;
+                vent_on = false; // El ventilador permanece apagado
+            } 
+            // Entre 25°C y 35°C ambos están apagados (Histeresis simple)
+            else {
+                vent_on = false;
+                calef_on = false;
+            }
+
+            // Aplicar los cambios solo si el modo es 'auto'
+            if (modo === 'auto') {
+                actuadores.ventilador = vent_on;
+                actuadores.calefaccion = calef_on;
+            }
+        }
+        
+        /**
+         * Función para actualizar el estado visual de los actuadores
+         */
+        function actualizarInterfazActuadores() {
+            const ventEstado = document.getElementById('estado-ventilador');
+            const calefEstado = document.getElementById('estado-calefaccion');
+
+            // 1. Ventilador
+            if (actuadores.ventilador) {
+                ventEstado.textContent = "ENCENDIDO";
+                ventEstado.className = 'actuador-estado actuador-on';
+            } else {
+                ventEstado.textContent = "APAGADO";
+                ventEstado.className = 'actuador-estado actuador-off';
+            }
+
+            // 2. Calefacción
+            if (actuadores.calefaccion) {
+                calefEstado.textContent = "ENCENDIDA";
+                calefEstado.className = 'actuador-estado actuador-on';
+            } else {
+                calefEstado.textContent = "APAGADA";
+                calefEstado.className = 'actuador-estado actuador-off';
+            }
+            
+            // Ocultar/Mostrar botones de control manual según el modo
+            const ventCard = document.getElementById('card-ventilador');
+            const calefCard = document.getElementById('card-calefaccion');
+            
+            if (modo === 'auto') {
+                ventCard.classList.add('disabled');
+                calefCard.classList.add('disabled');
+            } else {
+                ventCard.classList.remove('disabled');
+                calefCard.classList.remove('disabled');
+            }
+        }
+        
+        /**
+         * Función para cambiar el modo (Automático/Manual)
+         * @param {string} nuevoModo - 'auto' o 'manual'
+         */
+        function setModo(nuevoModo) {
+            modo = nuevoModo;
+            document.getElementById('modo-actual').textContent = modo === 'auto' ? 'Automático' : 'Manual';
+
+            const btnAuto = document.getElementById('btn-auto');
+            const btnManual = document.getElementById('btn-manual');
+
+            if (modo === 'auto') {
+                btnAuto.classList.add('modo-activo');
+                btnManual.classList.remove('modo-activo');
+            } else {
+                btnManual.classList.add('modo-activo');
+                btnAuto.classList.remove('modo-activo');
+            }
+            
+            actualizarInterfazActuadores(); // Actualiza el estado de los botones
+            
+            // NOTA: Aquí se enviaría el comando al ESP32 por Bluetooth.
+            // enviarComandoBluetooth('modo', modo);
+            console.log(`Modo cambiado a: ${modo}. Comando enviado al ESP32.`);
+            
+            if (modo === 'auto') {
+                 // Si volvemos a auto, forzamos la verificación del control automático
+                 const promedio = actualizarInterfazTemperaturas();
+                 controlAutomatico(promedio);
+            }
+        }
+        
+        /**
+         * Solicita la contraseña para entrar en modo Manual
+         */
+        function promptPassword() {
+            if (modo === 'manual') return; // Ya estamos en manual
+
+            const inputPass = prompt("Introduce la contraseña para el modo manual:");
+            if (inputPass === PASSWORD) {
+                setModo('manual');
+                alert("Modo Manual activado. ¡Control libre!");
+            } else {
+                alert("Contraseña incorrecta. Se mantiene el modo Automático.");
+            }
+        }
+        
+        /**
+         * Función para cambiar el estado de un actuador (Solo en modo manual)
+         * @param {string} actuador - 'ventilador' o 'calefaccion'
+         * @param {boolean} estado - true (encender) o false (apagar)
+         */
+        function setActuador(actuador, estado) {
+            if (modo !== 'manual') {
+                alert("¡ERROR! Debes estar en modo Manual para controlar los actuadores.");
+                return;
+            }
+            
+            actuadores[actuador] = estado;
+            
+            actualizarInterfazActuadores(); // Actualiza la visualización
+            
+            // NOTA: Aquí se enviaría el comando al ESP32 por Bluetooth.
+            // enviarComandoBluetooth(actuador, estado ? 'ON' : 'OFF');
+            console.log(`Comando Manual: ${actuador} -> ${estado ? 'ON' : 'OFF'}. Comando enviado al ESP32.`);
+        }
+
+        /**
+         * Función de SIMULACIÓN (Reemplazar con la conexión Bluetooth real)
+         * Esta función simula la actualización de temperaturas y ejecuta la lógica de control.
+         */
+        function simularActualizacion() {
+             // Simulación: Cambia las temperaturas ligeramente para ver el movimiento del termómetro
+             temperaturas = temperaturas.map(t => {
+                 // Añade un pequeño cambio aleatorio para simular lecturas dinámicas
+                 let newTemp = t + (Math.random() - 0.5) * 0.5;
+                 return Math.max(18, Math.min(38, newTemp)); // Mantiene las temperaturas en un rango razonable
+             });
+
+             const promedio = actualizarInterfazTemperaturas();
+             
+             if (modo === 'auto') {
+                 controlAutomatico(promedio);
+             }
+             
+             actualizarInterfazActuadores();
+        }
+
+        // Inicializar la interfaz y comenzar la simulación de actualización
+        actualizarInterfazTemperaturas();
+        actualizarInterfazActuadores();
+        setInterval(simularActualizacion, 2000); // Se actualiza cada 2 segundos
+
+        // --- FUNCIONES DE CONEXIÓN BLUETOOTH REAL (Placeholder) ---
+        
+        // El código para manejar la conexión Bluetooth Web (Web Bluetooth API) es complejo
+        // y requiere que el navegador y el entorno lo soporten, además de la configuración
+        // específica del ESP32 como servidor GATT.
+        
+        /*
+        function conectarBluetooth() {
+            if ('bluetooth' in navigator) {
+                // Lógica de conexión real aquí
+                console.log("Web Bluetooth API soportada. Inicie el escaneo del ESP32.");
+            } else {
+                console.warn("Web Bluetooth API no soportada en este navegador.");
+            }
+        }
+
+        function enviarComandoBluetooth(parametro, valor) {
+            // Lógica para escribir el comando en el característico GATT del ESP32
+            // Ejemplo: Escribir "M:manual" o "V:ON"
+            // Esta función dependería de la conexión activa.
+        }
+        */
+
+</script>
+</body>
+</html>
+
